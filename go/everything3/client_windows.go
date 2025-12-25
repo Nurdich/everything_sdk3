@@ -526,9 +526,41 @@ func (c *Client) buildSearchRequest(opts *SearchOptions) []byte {
 	return data[:offset]
 }
 
+// Property value types from Everything SDK
+const (
+	propValueTypePString               = 1
+	propValueTypePStringMultistring    = 2
+	propValueTypePStringStringRef      = 3
+	propValueTypePStringFolderRef      = 4
+	propValueTypePStringFileOrFolderRef = 5
+	propValueTypeByte                  = 6
+	propValueTypeByteGetText           = 7
+	propValueTypeWord                  = 8
+	propValueTypeWordGetText           = 9
+	propValueTypeDWord                 = 10
+	propValueTypeDWordFixedQ1K         = 11
+	propValueTypeDWordGetText          = 12
+	propValueTypeUint64                = 13
+	propValueTypeUint128               = 14
+	propValueTypeDimensions            = 15
+	propValueTypeSizeT                 = 16
+	propValueTypeInt32FixedQ1K         = 17
+	propValueTypeInt32FixedQ1M         = 18
+	propValueTypeBlob8                 = 19
+	propValueTypeBlob16                = 20
+	propValueTypePropVariant           = 21
+)
+
+// propertyInfo holds information about a requested property
+type propertyInfo struct {
+	propertyID uint32
+	flags      uint32
+	valueType  byte
+}
+
 // parseSearchResponse parses the binary response from a search
 func (c *Client) parseSearchResponse(data []byte) (*ResultList, error) {
-	if len(data) < 8 {
+	if len(data) < 4 {
 		return nil, errors.New("response too short")
 	}
 
@@ -538,95 +570,101 @@ func (c *Client) parseSearchResponse(data []byte) (*ResultList, error) {
 
 	offset := 0
 
-	// Read counts (SIZE_T values)
+	// Read valid_flags (DWORD)
+	validFlags := binary.LittleEndian.Uint32(data[offset:])
+	offset += 4
+
+	// Determine SIZE_T size based on 64-bit flag in response
 	sizeTLen := 4
-	if c.is64bit {
+	is64bit := (validFlags & searchFlag64Bit) != 0
+	if is64bit {
 		sizeTLen = 8
 	}
 
-	if len(data) < sizeTLen*4 {
+	// Read folder_result_count and file_result_count
+	if offset+sizeTLen*2 > len(data) {
 		return nil, errors.New("response too short for counts")
 	}
 
-	if c.is64bit {
-		result.TotalCount = binary.LittleEndian.Uint64(data[offset:])
-		offset += 8
+	if is64bit {
 		result.FolderCount = binary.LittleEndian.Uint64(data[offset:])
 		offset += 8
 		result.FileCount = binary.LittleEndian.Uint64(data[offset:])
 		offset += 8
-		result.ViewportCount = binary.LittleEndian.Uint64(data[offset:])
-		offset += 8
 	} else {
-		result.TotalCount = uint64(binary.LittleEndian.Uint32(data[offset:]))
-		offset += 4
 		result.FolderCount = uint64(binary.LittleEndian.Uint32(data[offset:]))
 		offset += 4
 		result.FileCount = uint64(binary.LittleEndian.Uint32(data[offset:]))
 		offset += 4
+	}
+	result.TotalCount = result.FolderCount + result.FileCount
+
+	// Skip total_result_size if TOTAL_SIZE flag is set (we didn't request it)
+	// The flag is 0x00000800
+	if validFlags&0x00000800 != 0 {
+		if offset+8 > len(data) {
+			return result, nil
+		}
+		offset += 8 // Skip uint64 total_result_size
+	}
+
+	// Read viewport_offset and viewport_count
+	if offset+sizeTLen*2 > len(data) {
+		return result, nil
+	}
+
+	var viewportOffset uint64
+	if is64bit {
+		viewportOffset = binary.LittleEndian.Uint64(data[offset:])
+		offset += 8
+		result.ViewportCount = binary.LittleEndian.Uint64(data[offset:])
+		offset += 8
+	} else {
+		viewportOffset = uint64(binary.LittleEndian.Uint32(data[offset:]))
+		offset += 4
 		result.ViewportCount = uint64(binary.LittleEndian.Uint32(data[offset:]))
 		offset += 4
+	}
+	_ = viewportOffset
+
+	// Read sort count and skip sort info
+	sortCount, vlqLen := decodeVLQ(data[offset:])
+	offset += vlqLen
+
+	// Skip sort info (each is DWORD property_id + DWORD flags)
+	for i := uint64(0); i < sortCount; i++ {
+		if offset+8 > len(data) {
+			return result, nil
+		}
+		offset += 8 // DWORD + DWORD
 	}
 
 	// Read property request count
 	propCount, vlqLen := decodeVLQ(data[offset:])
 	offset += vlqLen
 
-	// Skip property request info (each is DWORD property_id + SIZE_T offset)
-	propOffsets := make([]uint64, propCount)
+	// Read property request info (each is DWORD property_id + DWORD flags + BYTE value_type)
+	properties := make([]propertyInfo, propCount)
 	for i := uint64(0); i < propCount; i++ {
-		if offset+4+sizeTLen > len(data) {
+		if offset+9 > len(data) {
 			break
 		}
-		// Skip property ID
+		properties[i].propertyID = binary.LittleEndian.Uint32(data[offset:])
 		offset += 4
-		// Read offset
-		if c.is64bit {
-			propOffsets[i] = binary.LittleEndian.Uint64(data[offset:])
-			offset += 8
-		} else {
-			propOffsets[i] = uint64(binary.LittleEndian.Uint32(data[offset:]))
-			offset += 4
-		}
-	}
-
-	// Read sort count
-	sortCount, vlqLen := decodeVLQ(data[offset:])
-	offset += vlqLen
-
-	// Skip sort info
-	for i := uint64(0); i < sortCount; i++ {
-		if offset+4+sizeTLen > len(data) {
-			break
-		}
-		offset += 4 + sizeTLen
-	}
-
-	// Read item size
-	var itemSize uint64
-	if c.is64bit {
-		if offset+8 > len(data) {
-			return result, nil
-		}
-		itemSize = binary.LittleEndian.Uint64(data[offset:])
-		offset += 8
-	} else {
-		if offset+4 > len(data) {
-			return result, nil
-		}
-		itemSize = uint64(binary.LittleEndian.Uint32(data[offset:]))
+		properties[i].flags = binary.LittleEndian.Uint32(data[offset:])
 		offset += 4
+		properties[i].valueType = data[offset]
+		offset++
 	}
-	_ = itemSize // Used for calculating offsets within items
 
-	// Parse results
+	// Parse result items
 	for i := uint64(0); i < result.ViewportCount && offset < len(data); i++ {
-		r, bytesRead, err := c.parseResultItem(data[offset:], propCount)
+		r, bytesRead, err := c.parseResultItemWithProps(data[offset:], properties, sizeTLen)
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
-			break // Continue with what we have
+			break
 		}
 		result.Results = append(result.Results, r)
 		offset += bytesRead
@@ -635,8 +673,8 @@ func (c *Client) parseSearchResponse(data []byte) (*ResultList, error) {
 	return result, nil
 }
 
-// parseResultItem parses a single result item from the response
-func (c *Client) parseResultItem(data []byte, propCount uint64) (Result, int, error) {
+// parseResultItemWithProps parses a single result item based on property info
+func (c *Client) parseResultItemWithProps(data []byte, properties []propertyInfo, sizeTLen int) (Result, int, error) {
 	if len(data) < 1 {
 		return Result{}, 0, io.EOF
 	}
@@ -651,48 +689,168 @@ func (c *Client) parseResultItem(data []byte, propCount uint64) (Result, int, er
 	offset++
 	r.IsFolder = itemFlags&resultFlagFolder != 0
 
-	// Read properties based on what was requested
-	// This is a simplified parser - the actual format depends on what properties were requested
-	// For now, we'll try to parse common properties
+	// Read each property based on its value type
+	for _, prop := range properties {
+		if offset >= len(data) {
+			break
+		}
 
-	// Try to read name (always first if available)
-	if offset < len(data) {
-		name, n := c.readUTF8PString(data[offset:])
-		r.Name = name
-		offset += n
-	}
+		switch prop.valueType {
+		case propValueTypePString, propValueTypePStringMultistring,
+			propValueTypePStringStringRef, propValueTypePStringFolderRef,
+			propValueTypePStringFileOrFolderRef:
+			// VLQ length + UTF-8 string
+			str, n := c.readUTF8PString(data[offset:])
+			offset += n
 
-	// Try to read path
-	if offset < len(data) {
-		path, n := c.readUTF8PString(data[offset:])
-		r.Path = path
-		offset += n
+			// Store in the appropriate field based on property ID
+			switch prop.propertyID {
+			case PropertyIDName:
+				r.Name = str
+			case PropertyIDPath:
+				r.Path = str
+			case PropertyIDExtension:
+				r.Extension = str
+			case PropertyIDType:
+				r.Type = str
+			default:
+				r.Properties[prop.propertyID] = str
+			}
+
+		case propValueTypeByte, propValueTypeByteGetText:
+			if offset+1 > len(data) {
+				break
+			}
+			val := data[offset]
+			offset++
+			r.Properties[prop.propertyID] = val
+
+		case propValueTypeWord, propValueTypeWordGetText:
+			if offset+2 > len(data) {
+				break
+			}
+			val := binary.LittleEndian.Uint16(data[offset:])
+			offset += 2
+			r.Properties[prop.propertyID] = val
+
+		case propValueTypeDWord, propValueTypeDWordFixedQ1K, propValueTypeDWordGetText:
+			if offset+4 > len(data) {
+				break
+			}
+			val := binary.LittleEndian.Uint32(data[offset:])
+			offset += 4
+
+			switch prop.propertyID {
+			case PropertyIDAttributes:
+				r.Attributes = val
+			default:
+				r.Properties[prop.propertyID] = val
+			}
+
+		case propValueTypeUint64:
+			if offset+8 > len(data) {
+				break
+			}
+			val := binary.LittleEndian.Uint64(data[offset:])
+			offset += 8
+
+			switch prop.propertyID {
+			case PropertyIDSize:
+				r.Size = val
+			case PropertyIDDateModified:
+				r.DateModified = filetimeToTime(val)
+			case PropertyIDDateCreated:
+				r.DateCreated = filetimeToTime(val)
+			case PropertyIDDateAccessed:
+				r.DateAccessed = filetimeToTime(val)
+			default:
+				r.Properties[prop.propertyID] = val
+			}
+
+		case propValueTypeSizeT:
+			if offset+sizeTLen > len(data) {
+				break
+			}
+			var val uint64
+			if sizeTLen == 8 {
+				val = binary.LittleEndian.Uint64(data[offset:])
+			} else {
+				val = uint64(binary.LittleEndian.Uint32(data[offset:]))
+			}
+			offset += sizeTLen
+			r.Properties[prop.propertyID] = val
+
+		case propValueTypeBlob8, propValueTypeBlob16:
+			// VLQ length + blob data
+			blobLen, vlqLen := decodeVLQ(data[offset:])
+			offset += vlqLen
+			if offset+int(blobLen) > len(data) {
+				break
+			}
+			blobData := make([]byte, blobLen)
+			copy(blobData, data[offset:offset+int(blobLen)])
+			offset += int(blobLen)
+
+			// Store hash values
+			hash := Hash{Valid: blobLen > 0, Value: blobData}
+			switch prop.propertyID {
+			case PropertyIDCRC32:
+				r.CRC32 = hash
+			case PropertyIDCRC64:
+				r.CRC64 = hash
+			case PropertyIDMD5:
+				r.MD5 = hash
+			case PropertyIDSHA1:
+				r.SHA1 = hash
+			case PropertyIDSHA256:
+				r.SHA256 = hash
+			case PropertyIDSHA384:
+				r.SHA384 = hash
+			case PropertyIDSHA512:
+				r.SHA512 = hash
+			default:
+				r.Properties[prop.propertyID] = blobData
+			}
+
+		case propValueTypeUint128:
+			if offset+16 > len(data) {
+				break
+			}
+			// Read 16 bytes
+			val := make([]byte, 16)
+			copy(val, data[offset:offset+16])
+			offset += 16
+			r.Properties[prop.propertyID] = val
+
+		case propValueTypeDimensions:
+			if offset+8 > len(data) {
+				break
+			}
+			// Dimensions is width + height (2 DWORDs)
+			width := binary.LittleEndian.Uint32(data[offset:])
+			height := binary.LittleEndian.Uint32(data[offset+4:])
+			offset += 8
+			r.Properties[prop.propertyID] = [2]uint32{width, height}
+
+		case propValueTypeInt32FixedQ1K, propValueTypeInt32FixedQ1M:
+			if offset+4 > len(data) {
+				break
+			}
+			val := int32(binary.LittleEndian.Uint32(data[offset:]))
+			offset += 4
+			r.Properties[prop.propertyID] = val
+
+		default:
+			// Unknown type, try to skip
+			// This is a best-effort approach
+		}
 	}
 
 	// Build full path
 	if r.Path != "" && r.Name != "" {
 		r.FullPath = filepath.Join(r.Path, r.Name)
-	} else {
+	} else if r.Name != "" {
 		r.FullPath = r.Name
-	}
-
-	// Read remaining properties (size, dates, attributes)
-	// Size (uint64)
-	if offset+8 <= len(data) {
-		r.Size = binary.LittleEndian.Uint64(data[offset:])
-		offset += 8
-	}
-
-	// Date modified (FILETIME)
-	if offset+8 <= len(data) {
-		r.DateModified = filetimeToTime(binary.LittleEndian.Uint64(data[offset:]))
-		offset += 8
-	}
-
-	// Attributes (uint32)
-	if offset+4 <= len(data) {
-		r.Attributes = binary.LittleEndian.Uint32(data[offset:])
-		offset += 4
 	}
 
 	return r, offset, nil

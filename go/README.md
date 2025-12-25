@@ -129,6 +129,62 @@ for {
 }
 ```
 
+### 获取文件哈希值
+
+```go
+// 获取单个哈希值
+crc32, err := client.GetFileCRC32(`C:\Windows\notepad.exe`)
+if err == nil {
+    fmt.Printf("CRC32: %08X\n", crc32)
+}
+
+md5, err := client.GetFileMD5(`C:\Windows\notepad.exe`)
+if err == nil {
+    fmt.Printf("MD5: %s\n", md5)
+}
+
+sha256, err := client.GetFileSHA256(`C:\Windows\notepad.exe`)
+if err == nil {
+    fmt.Printf("SHA256: %s\n", sha256)
+}
+
+// 获取所有可用的哈希值
+hashes, err := client.GetFileHashes(`C:\Windows\notepad.exe`)
+if err == nil {
+    if hashes.CRC32.Valid {
+        fmt.Printf("CRC32: %08X\n", hashes.CRC32.CRC32())
+    }
+    if hashes.MD5.Valid {
+        fmt.Printf("MD5: %s\n", hashes.MD5.String())
+    }
+    if hashes.SHA256.Valid {
+        fmt.Printf("SHA256: %s\n", hashes.SHA256.String())
+    }
+}
+```
+
+### 搜索时获取哈希值
+
+```go
+// 使用包含哈希属性的搜索选项
+opts := everything3.SearchOptionsWithHashes()
+opts.Text = "*.exe"
+opts.Count = 10
+
+results, err := client.Search(opts)
+if err == nil {
+    for _, result := range results.Results {
+        fmt.Printf("File: %s\n", result.Name)
+        if result.CRC32.Valid {
+            fmt.Printf("  CRC32: %08X\n", result.CRC32.CRC32())
+        }
+        if result.SHA256.Valid {
+            fmt.Printf("  SHA256: %s\n", result.SHA256.String())
+        }
+    }
+}
+```
+
 ## API 参考
 
 ### 连接管理
@@ -156,9 +212,30 @@ for {
 | `handle.Next()` | 获取下一个文件 |
 | `handle.Close()` | 关闭遍历句柄 |
 
+### 哈希/校验和
+
+| 函数 | 描述 |
+|------|------|
+| `client.GetFileCRC32(path)` | 获取 CRC32 校验值 |
+| `client.GetFileCRC64(path)` | 获取 CRC64 校验值 |
+| `client.GetFileMD5(path)` | 获取 MD5 哈希（十六进制字符串） |
+| `client.GetFileSHA1(path)` | 获取 SHA1 哈希 |
+| `client.GetFileSHA256(path)` | 获取 SHA256 哈希 |
+| `client.GetFileSHA512(path)` | 获取 SHA512 哈希 |
+| `client.GetFileHashes(path)` | 获取所有可用的哈希值 |
+| `client.GetFileHash(path, propertyID)` | 获取指定类型的哈希值 |
+
+### 通用属性查询
+
+| 函数 | 描述 |
+|------|------|
+| `client.GetPropertyString(path, id)` | 获取字符串属性 |
+| `client.GetPropertyUint32(path, id)` | 获取 32 位整数属性 |
+| `client.GetPropertyUint64(path, id)` | 获取 64 位整数属性 |
+
 ### 属性 ID
 
-常用属性 ID：
+基本属性：
 
 | 常量 | 值 | 描述 |
 |------|-----|------|
@@ -170,6 +247,26 @@ for {
 | `PropertyIDDateCreated` | 6 | 创建时间 |
 | `PropertyIDDateAccessed` | 7 | 访问时间 |
 | `PropertyIDAttributes` | 8 | 文件属性 |
+
+哈希/校验和属性：
+
+| 常量 | 值 | 描述 |
+|------|-----|------|
+| `PropertyIDCRC32` | 40 | CRC32 校验值 (4 字节) |
+| `PropertyIDCRC64` | 244 | CRC64 校验值 (8 字节) |
+| `PropertyIDMD5` | 37 | MD5 哈希 (16 字节) |
+| `PropertyIDSHA1` | 38 | SHA1 哈希 (20 字节) |
+| `PropertyIDSHA256` | 39 | SHA256 哈希 (32 字节) |
+| `PropertyIDSHA384` | 243 | SHA384 哈希 (48 字节) |
+| `PropertyIDSHA512` | 242 | SHA512 哈希 (64 字节) |
+
+文件夹哈希属性（计算文件夹内容的哈希）：
+
+| 常量 | 值 | 描述 |
+|------|-----|------|
+| `PropertyIDFolderDataCRC32` | 361 | 文件夹数据 CRC32 |
+| `PropertyIDFolderDataMD5` | 363 | 文件夹数据 MD5 |
+| `PropertyIDFolderDataSHA256` | 365 | 文件夹数据 SHA256 |
 
 ## 运行示例
 

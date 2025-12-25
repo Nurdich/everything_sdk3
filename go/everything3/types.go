@@ -59,10 +59,108 @@ const (
 
 // Video property IDs
 const (
-	PropertyIDVideoDuration = 300 // Video duration
-	PropertyIDVideoWidth    = 301 // Video width
-	PropertyIDVideoHeight   = 302 // Video height
+	PropertyIDVideoDuration  = 300 // Video duration
+	PropertyIDVideoWidth     = 301 // Video width
+	PropertyIDVideoHeight    = 302 // Video height
 	PropertyIDVideoFrameRate = 303 // Video frame rate
+)
+
+// Hash/Checksum property IDs
+const (
+	PropertyIDMD5    = 37  // MD5 hash (16 bytes)
+	PropertyIDSHA1   = 38  // SHA1 hash (20 bytes)
+	PropertyIDSHA256 = 39  // SHA256 hash (32 bytes)
+	PropertyIDCRC32  = 40  // CRC32 checksum (4 bytes)
+	PropertyIDSHA512 = 242 // SHA512 hash (64 bytes)
+	PropertyIDSHA384 = 243 // SHA384 hash (48 bytes)
+	PropertyIDCRC64  = 244 // CRC64 checksum (8 bytes)
+)
+
+// Folder hash property IDs (hash of folder contents)
+const (
+	PropertyIDFolderDataCRC32           = 361 // CRC32 of folder data
+	PropertyIDFolderDataCRC64           = 362 // CRC64 of folder data
+	PropertyIDFolderDataMD5             = 363 // MD5 of folder data
+	PropertyIDFolderDataSHA1            = 364 // SHA1 of folder data
+	PropertyIDFolderDataSHA256          = 365 // SHA256 of folder data
+	PropertyIDFolderDataSHA512          = 366 // SHA512 of folder data
+	PropertyIDFolderDataAndNamesCRC32   = 367 // CRC32 of folder data and names
+	PropertyIDFolderDataAndNamesCRC64   = 368 // CRC64 of folder data and names
+	PropertyIDFolderDataAndNamesMD5     = 369 // MD5 of folder data and names
+	PropertyIDFolderDataAndNamesSHA1    = 370 // SHA1 of folder data and names
+	PropertyIDFolderDataAndNamesSHA256  = 371 // SHA256 of folder data and names
+	PropertyIDFolderDataAndNamesSHA512  = 372 // SHA512 of folder data and names
+	PropertyIDFolderNamesCRC32          = 373 // CRC32 of folder names
+	PropertyIDFolderNamesCRC64          = 374 // CRC64 of folder names
+	PropertyIDFolderNamesMD5            = 375 // MD5 of folder names
+	PropertyIDFolderNamesSHA1           = 376 // SHA1 of folder names
+	PropertyIDFolderNamesSHA256         = 377 // SHA256 of folder names
+	PropertyIDFolderNamesSHA512         = 378 // SHA512 of folder names
+)
+
+// SFV/Checksum file verification property IDs
+const (
+	PropertyIDSFVCRC32       = 302 // CRC32 from .sfv file
+	PropertyIDMD5SumMD5      = 303 // MD5 from .md5sum file
+	PropertyIDSHA1SumSHA1    = 304 // SHA1 from .sha1sum file
+	PropertyIDSHA256SumSHA256 = 305 // SHA256 from .sha256sum file
+	PropertyIDSHA512SumSHA512 = 320 // SHA512 from .sha512sum file
+	PropertyIDMD5SumPass     = 307 // MD5sum verification pass/fail
+	PropertyIDSHA1SumPass    = 308 // SHA1sum verification pass/fail
+	PropertyIDSHA256SumPass  = 309 // SHA256sum verification pass/fail
+	PropertyIDSHA512SumPass  = 321 // SHA512sum verification pass/fail
+)
+
+// Extended file property IDs
+const (
+	PropertyIDSizeOnDisk       = 41  // Size on disk (compressed size)
+	PropertyIDDescription      = 42  // File description
+	PropertyIDVersion          = 43  // File version
+	PropertyIDProductName      = 44  // Product name
+	PropertyIDProductVersion   = 45  // Product version
+	PropertyIDCompany          = 46  // Company name
+	PropertyIDKind             = 47  // File kind
+	PropertyIDHardLinkCount    = 164 // Number of hard links
+	PropertyIDCompressedSize   = 171 // Compressed size
+	PropertyIDCompressionRatio = 176 // Compression ratio
+	PropertyIDReparseTag       = 177 // Reparse point tag
+	PropertyIDFileID           = 190 // NTFS File ID (128-bit)
+	PropertyIDVolumeSerial     = 189 // Volume serial number
+)
+
+// Document property IDs
+const (
+	PropertyIDTitle         = 25  // Document title
+	PropertyIDArtist        = 26  // Artist/Author
+	PropertyIDAlbum         = 27  // Album
+	PropertyIDYear          = 28  // Year
+	PropertyIDComment       = 29  // Comment
+	PropertyIDTrack         = 30  // Track number
+	PropertyIDGenre         = 31  // Genre
+	PropertyIDRating        = 35  // Rating (0-5)
+	PropertyIDTags          = 36  // Tags
+	PropertyIDSubject       = 50  // Subject
+	PropertyIDAuthors       = 51  // Authors
+	PropertyIDCopyright     = 55  // Copyright
+	PropertyIDPageCount     = 127 // Page count
+	PropertyIDWordCount     = 128 // Word count
+	PropertyIDCharacterCount = 129 // Character count
+	PropertyIDLineCount     = 130 // Line count
+)
+
+// Camera/EXIF property IDs
+const (
+	PropertyIDDateTaken       = 52  // Date photo was taken
+	PropertyIDCameraMaker     = 63  // Camera manufacturer
+	PropertyIDCameraModel     = 64  // Camera model
+	PropertyIDFStop           = 65  // F-stop value
+	PropertyIDExposureTime    = 66  // Exposure time
+	PropertyIDISOSpeed        = 67  // ISO speed
+	PropertyIDFocalLength     = 69  // Focal length
+	PropertyIDFlashMode       = 73  // Flash mode
+	PropertyIDLatitude        = 91  // GPS latitude
+	PropertyIDLongitude       = 92  // GPS longitude
+	PropertyIDAltitude        = 93  // GPS altitude
 )
 
 // FoldersFirst specifies how folders are sorted relative to files
@@ -130,6 +228,85 @@ func DefaultSearchOptions() *SearchOptions {
 	}
 }
 
+// SearchOptionsWithHashes returns search options that include hash properties
+func SearchOptionsWithHashes() *SearchOptions {
+	return &SearchOptions{
+		Count: 100,
+		RequestedProperties: []uint32{
+			PropertyIDName,
+			PropertyIDPath,
+			PropertyIDSize,
+			PropertyIDDateModified,
+			PropertyIDAttributes,
+			PropertyIDCRC32,
+			PropertyIDMD5,
+			PropertyIDSHA1,
+			PropertyIDSHA256,
+		},
+	}
+}
+
+// SearchOptionsWithAllHashes returns search options that include all available hashes
+func SearchOptionsWithAllHashes() *SearchOptions {
+	return &SearchOptions{
+		Count: 100,
+		RequestedProperties: []uint32{
+			PropertyIDName,
+			PropertyIDPath,
+			PropertyIDSize,
+			PropertyIDDateModified,
+			PropertyIDAttributes,
+			PropertyIDCRC32,
+			PropertyIDCRC64,
+			PropertyIDMD5,
+			PropertyIDSHA1,
+			PropertyIDSHA256,
+			PropertyIDSHA384,
+			PropertyIDSHA512,
+		},
+	}
+}
+
+// Hash represents a file hash/checksum value
+type Hash struct {
+	Valid bool   // True if the hash is available
+	Value []byte // Raw hash bytes
+}
+
+// String returns the hex string representation of the hash
+func (h Hash) String() string {
+	if !h.Valid || len(h.Value) == 0 {
+		return ""
+	}
+	const hexChars = "0123456789abcdef"
+	result := make([]byte, len(h.Value)*2)
+	for i, b := range h.Value {
+		result[i*2] = hexChars[b>>4]
+		result[i*2+1] = hexChars[b&0x0f]
+	}
+	return string(result)
+}
+
+// CRC32 returns the CRC32 value as uint32 (0 if not valid)
+func (h Hash) CRC32() uint32 {
+	if !h.Valid || len(h.Value) < 4 {
+		return 0
+	}
+	return uint32(h.Value[0]) | uint32(h.Value[1])<<8 |
+		uint32(h.Value[2])<<16 | uint32(h.Value[3])<<24
+}
+
+// CRC64 returns the CRC64 value as uint64 (0 if not valid)
+func (h Hash) CRC64() uint64 {
+	if !h.Valid || len(h.Value) < 8 {
+		return 0
+	}
+	return uint64(h.Value[0]) | uint64(h.Value[1])<<8 |
+		uint64(h.Value[2])<<16 | uint64(h.Value[3])<<24 |
+		uint64(h.Value[4])<<32 | uint64(h.Value[5])<<40 |
+		uint64(h.Value[6])<<48 | uint64(h.Value[7])<<56
+}
+
 // Result represents a single search result
 type Result struct {
 	// Basic properties (always available)
@@ -148,6 +325,15 @@ type Result struct {
 
 	// Flags
 	IsFolder bool // True if this is a directory
+
+	// Hash/Checksum values (populated if requested)
+	CRC32  Hash // CRC32 checksum
+	CRC64  Hash // CRC64 checksum
+	MD5    Hash // MD5 hash
+	SHA1   Hash // SHA1 hash
+	SHA256 Hash // SHA256 hash
+	SHA384 Hash // SHA384 hash
+	SHA512 Hash // SHA512 hash
 
 	// Extended properties (populated based on request)
 	Properties map[uint32]interface{}

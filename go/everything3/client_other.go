@@ -65,16 +65,73 @@ func (h *FindHandle) Close() error {
 
 // FormatSize returns a human-readable file size
 func FormatSize(size uint64) string {
-	const unit = 1024
-	if size < unit {
-		return ""
-	}
-	div, exp := uint64(unit), 0
-	for n := size / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
 	return ""
+}
+
+// GetFileHash returns the hash value for a file
+func (c *Client) GetFileHash(path string, propertyID uint32) (Hash, error) {
+	return Hash{}, ErrNotSupported
+}
+
+// GetFileCRC32 returns the CRC32 checksum for a file
+func (c *Client) GetFileCRC32(path string) (uint32, error) {
+	return 0, ErrNotSupported
+}
+
+// GetFileCRC64 returns the CRC64 checksum for a file
+func (c *Client) GetFileCRC64(path string) (uint64, error) {
+	return 0, ErrNotSupported
+}
+
+// GetFileMD5 returns the MD5 hash for a file as a hex string
+func (c *Client) GetFileMD5(path string) (string, error) {
+	return "", ErrNotSupported
+}
+
+// GetFileSHA1 returns the SHA1 hash for a file as a hex string
+func (c *Client) GetFileSHA1(path string) (string, error) {
+	return "", ErrNotSupported
+}
+
+// GetFileSHA256 returns the SHA256 hash for a file as a hex string
+func (c *Client) GetFileSHA256(path string) (string, error) {
+	return "", ErrNotSupported
+}
+
+// GetFileSHA512 returns the SHA512 hash for a file as a hex string
+func (c *Client) GetFileSHA512(path string) (string, error) {
+	return "", ErrNotSupported
+}
+
+// GetFileHashes returns multiple hash values for a file
+func (c *Client) GetFileHashes(path string) (*FileHashes, error) {
+	return nil, ErrNotSupported
+}
+
+// FileHashes contains all hash values for a file
+type FileHashes struct {
+	CRC32  Hash
+	CRC64  Hash
+	MD5    Hash
+	SHA1   Hash
+	SHA256 Hash
+	SHA384 Hash
+	SHA512 Hash
+}
+
+// GetPropertyString returns a string property value for a file
+func (c *Client) GetPropertyString(path string, propertyID uint32) (string, error) {
+	return "", ErrNotSupported
+}
+
+// GetPropertyUint64 returns a uint64 property value for a file
+func (c *Client) GetPropertyUint64(path string, propertyID uint32) (uint64, error) {
+	return 0, ErrNotSupported
+}
+
+// GetPropertyUint32 returns a uint32 property value for a file
+func (c *Client) GetPropertyUint32(path string, propertyID uint32) (uint32, error) {
+	return 0, ErrNotSupported
 }
 
 // IsWindowsAvailable returns whether the current platform is Windows
@@ -84,7 +141,4 @@ func IsWindowsAvailable() bool {
 
 func init() {
 	// This package only works on Windows
-	if runtime.GOOS != "windows" {
-		// Log a warning or just continue - errors will be returned at runtime
-	}
 }

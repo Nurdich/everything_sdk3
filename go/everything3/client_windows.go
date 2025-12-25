@@ -35,6 +35,8 @@ const (
 	ipcMsgFindClose       = 0x0007
 	ipcMsgGetJournalInfo  = 0x0008
 	ipcMsgReadJournal     = 0x0009
+	ipcMsgGetProperty     = 0x000A
+	ipcMsgGetPropertyBlob = 0x000B
 )
 
 // Connect creates a new connection to the Everything IPC server.
@@ -648,6 +650,231 @@ func FormatSize(size uint64) string {
 
 // Ensure Client implements io.Closer
 var _ io.Closer = (*Client)(nil)
+
+// GetFileHash returns the hash value for a file
+// propertyID should be one of: PropertyIDCRC32, PropertyIDMD5, PropertyIDSHA1, etc.
+func (c *Client) GetFileHash(path string, propertyID uint32) (Hash, error) {
+	// Encode path as UTF-16LE
+	pathUTF16 := utf16.Encode([]rune(path))
+	pathBytes := make([]byte, (len(pathUTF16)+1)*2)
+	for i, r := range pathUTF16 {
+		binary.LittleEndian.PutUint16(pathBytes[i*2:], r)
+	}
+
+	// Build request: property ID + path
+	data := make([]byte, 4+len(pathBytes))
+	binary.LittleEndian.PutUint32(data[0:4], propertyID)
+	copy(data[4:], pathBytes)
+
+	response, err := c.sendMessage(ipcMsgGetPropertyBlob, data)
+	if err != nil {
+		return Hash{}, err
+	}
+
+	if len(response) < 4 {
+		return Hash{}, errors.New("invalid response")
+	}
+
+	// First 4 bytes are the blob size
+	blobSize := binary.LittleEndian.Uint32(response[0:4])
+	if blobSize == 0 {
+		return Hash{Valid: false}, nil
+	}
+
+	if len(response) < 4+int(blobSize) {
+		return Hash{}, errors.New("incomplete blob data")
+	}
+
+	return Hash{
+		Valid: true,
+		Value: response[4 : 4+blobSize],
+	}, nil
+}
+
+// GetFileCRC32 returns the CRC32 checksum for a file
+func (c *Client) GetFileCRC32(path string) (uint32, error) {
+	hash, err := c.GetFileHash(path, PropertyIDCRC32)
+	if err != nil {
+		return 0, err
+	}
+	if !hash.Valid {
+		return 0, errors.New("CRC32 not available")
+	}
+	return hash.CRC32(), nil
+}
+
+// GetFileCRC64 returns the CRC64 checksum for a file
+func (c *Client) GetFileCRC64(path string) (uint64, error) {
+	hash, err := c.GetFileHash(path, PropertyIDCRC64)
+	if err != nil {
+		return 0, err
+	}
+	if !hash.Valid {
+		return 0, errors.New("CRC64 not available")
+	}
+	return hash.CRC64(), nil
+}
+
+// GetFileMD5 returns the MD5 hash for a file as a hex string
+func (c *Client) GetFileMD5(path string) (string, error) {
+	hash, err := c.GetFileHash(path, PropertyIDMD5)
+	if err != nil {
+		return "", err
+	}
+	if !hash.Valid {
+		return "", errors.New("MD5 not available")
+	}
+	return hash.String(), nil
+}
+
+// GetFileSHA1 returns the SHA1 hash for a file as a hex string
+func (c *Client) GetFileSHA1(path string) (string, error) {
+	hash, err := c.GetFileHash(path, PropertyIDSHA1)
+	if err != nil {
+		return "", err
+	}
+	if !hash.Valid {
+		return "", errors.New("SHA1 not available")
+	}
+	return hash.String(), nil
+}
+
+// GetFileSHA256 returns the SHA256 hash for a file as a hex string
+func (c *Client) GetFileSHA256(path string) (string, error) {
+	hash, err := c.GetFileHash(path, PropertyIDSHA256)
+	if err != nil {
+		return "", err
+	}
+	if !hash.Valid {
+		return "", errors.New("SHA256 not available")
+	}
+	return hash.String(), nil
+}
+
+// GetFileSHA512 returns the SHA512 hash for a file as a hex string
+func (c *Client) GetFileSHA512(path string) (string, error) {
+	hash, err := c.GetFileHash(path, PropertyIDSHA512)
+	if err != nil {
+		return "", err
+	}
+	if !hash.Valid {
+		return "", errors.New("SHA512 not available")
+	}
+	return hash.String(), nil
+}
+
+// GetFileHashes returns multiple hash values for a file
+func (c *Client) GetFileHashes(path string) (*FileHashes, error) {
+	hashes := &FileHashes{}
+	var err error
+
+	// Try to get each hash type (errors are ignored for individual hashes)
+	hashes.CRC32, _ = c.GetFileHash(path, PropertyIDCRC32)
+	hashes.CRC64, _ = c.GetFileHash(path, PropertyIDCRC64)
+	hashes.MD5, _ = c.GetFileHash(path, PropertyIDMD5)
+	hashes.SHA1, _ = c.GetFileHash(path, PropertyIDSHA1)
+	hashes.SHA256, _ = c.GetFileHash(path, PropertyIDSHA256)
+	hashes.SHA384, _ = c.GetFileHash(path, PropertyIDSHA384)
+	hashes.SHA512, _ = c.GetFileHash(path, PropertyIDSHA512)
+
+	// Check if at least one hash was retrieved
+	if !hashes.CRC32.Valid && !hashes.MD5.Valid && !hashes.SHA1.Valid && !hashes.SHA256.Valid {
+		return nil, errors.New("no hashes available for this file")
+	}
+
+	return hashes, err
+}
+
+// FileHashes contains all hash values for a file
+type FileHashes struct {
+	CRC32  Hash
+	CRC64  Hash
+	MD5    Hash
+	SHA1   Hash
+	SHA256 Hash
+	SHA384 Hash
+	SHA512 Hash
+}
+
+// GetPropertyString returns a string property value for a file
+func (c *Client) GetPropertyString(path string, propertyID uint32) (string, error) {
+	// Encode path as UTF-16LE
+	pathUTF16 := utf16.Encode([]rune(path))
+	pathBytes := make([]byte, (len(pathUTF16)+1)*2)
+	for i, r := range pathUTF16 {
+		binary.LittleEndian.PutUint16(pathBytes[i*2:], r)
+	}
+
+	// Build request: property ID + path
+	data := make([]byte, 4+len(pathBytes))
+	binary.LittleEndian.PutUint32(data[0:4], propertyID)
+	copy(data[4:], pathBytes)
+
+	response, err := c.sendMessage(ipcMsgGetProperty, data)
+	if err != nil {
+		return "", err
+	}
+
+	if len(response) < 4 {
+		return "", errors.New("invalid response")
+	}
+
+	// Parse as UTF-16LE string
+	result, _ := readUTF16String(response)
+	return result, nil
+}
+
+// GetPropertyUint64 returns a uint64 property value for a file
+func (c *Client) GetPropertyUint64(path string, propertyID uint32) (uint64, error) {
+	// Encode path as UTF-16LE
+	pathUTF16 := utf16.Encode([]rune(path))
+	pathBytes := make([]byte, (len(pathUTF16)+1)*2)
+	for i, r := range pathUTF16 {
+		binary.LittleEndian.PutUint16(pathBytes[i*2:], r)
+	}
+
+	// Build request: property ID + path
+	data := make([]byte, 4+len(pathBytes))
+	binary.LittleEndian.PutUint32(data[0:4], propertyID)
+	copy(data[4:], pathBytes)
+
+	response, err := c.sendMessage(ipcMsgGetProperty, data)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(response) < 8 {
+		return 0, errors.New("invalid response")
+	}
+
+	return binary.LittleEndian.Uint64(response), nil
+}
+
+// GetPropertyUint32 returns a uint32 property value for a file
+func (c *Client) GetPropertyUint32(path string, propertyID uint32) (uint32, error) {
+	// Encode path as UTF-16LE
+	pathUTF16 := utf16.Encode([]rune(path))
+	pathBytes := make([]byte, (len(pathUTF16)+1)*2)
+	for i, r := range pathUTF16 {
+		binary.LittleEndian.PutUint16(pathBytes[i*2:], r)
+	}
+
+	// Build request: property ID + path
+	data := make([]byte, 4+len(pathBytes))
+	binary.LittleEndian.PutUint32(data[0:4], propertyID)
+	copy(data[4:], pathBytes)
+
+	response, err := c.sendMessage(ipcMsgGetProperty, data)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(response) < 4 {
+		return 0, errors.New("invalid response")
+	}
+
+	return binary.LittleEndian.Uint32(response), nil
+}
 
 // Platform check
 func init() {

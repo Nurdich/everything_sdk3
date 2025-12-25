@@ -58,6 +58,18 @@ func main() {
 	if err := findFilesExample(); err != nil {
 		fmt.Printf("Find files example error: %v\n", err)
 	}
+
+	fmt.Println()
+
+	if err := hashExample(); err != nil {
+		fmt.Printf("Hash example error: %v\n", err)
+	}
+
+	fmt.Println()
+
+	if err := searchWithHashesExample(); err != nil {
+		fmt.Printf("Search with hashes example error: %v\n", err)
+	}
 }
 
 // simpleExample demonstrates a basic search
@@ -261,6 +273,126 @@ func findFilesExample() error {
 	return nil
 }
 
+// hashExample demonstrates getting file hash values (CRC32, MD5, SHA256, etc.)
+func hashExample() error {
+	fmt.Println("=== File Hash Example ===")
+
+	client, err := everything3.ConnectDefault()
+	if err != nil {
+		return fmt.Errorf("failed to connect to Everything: %w", err)
+	}
+	defer client.Close()
+
+	// Get hashes for a common Windows file
+	testPath := `C:\Windows\notepad.exe`
+	fmt.Printf("Getting hashes for: %s\n\n", testPath)
+
+	// Get individual hashes
+	crc32, err := client.GetFileCRC32(testPath)
+	if err != nil {
+		fmt.Printf("CRC32: (not available: %v)\n", err)
+	} else {
+		fmt.Printf("CRC32:  %08X\n", crc32)
+	}
+
+	md5, err := client.GetFileMD5(testPath)
+	if err != nil {
+		fmt.Printf("MD5:    (not available: %v)\n", err)
+	} else {
+		fmt.Printf("MD5:    %s\n", md5)
+	}
+
+	sha1, err := client.GetFileSHA1(testPath)
+	if err != nil {
+		fmt.Printf("SHA1:   (not available: %v)\n", err)
+	} else {
+		fmt.Printf("SHA1:   %s\n", sha1)
+	}
+
+	sha256, err := client.GetFileSHA256(testPath)
+	if err != nil {
+		fmt.Printf("SHA256: (not available: %v)\n", err)
+	} else {
+		fmt.Printf("SHA256: %s\n", sha256)
+	}
+
+	// Get all hashes at once
+	fmt.Println("\n--- All Hashes ---")
+	hashes, err := client.GetFileHashes(testPath)
+	if err != nil {
+		fmt.Printf("Could not get hashes: %v\n", err)
+	} else {
+		if hashes.CRC32.Valid {
+			fmt.Printf("CRC32:  %08X\n", hashes.CRC32.CRC32())
+		}
+		if hashes.CRC64.Valid {
+			fmt.Printf("CRC64:  %016X\n", hashes.CRC64.CRC64())
+		}
+		if hashes.MD5.Valid {
+			fmt.Printf("MD5:    %s\n", hashes.MD5.String())
+		}
+		if hashes.SHA1.Valid {
+			fmt.Printf("SHA1:   %s\n", hashes.SHA1.String())
+		}
+		if hashes.SHA256.Valid {
+			fmt.Printf("SHA256: %s\n", hashes.SHA256.String())
+		}
+		if hashes.SHA384.Valid {
+			fmt.Printf("SHA384: %s\n", hashes.SHA384.String())
+		}
+		if hashes.SHA512.Valid {
+			fmt.Printf("SHA512: %s\n", hashes.SHA512.String())
+		}
+	}
+
+	return nil
+}
+
+// searchWithHashesExample demonstrates searching with hash properties
+func searchWithHashesExample() error {
+	fmt.Println("=== Search with Hashes Example ===")
+	fmt.Println("Searching for *.exe files with CRC32 and SHA256\n")
+
+	client, err := everything3.ConnectDefault()
+	if err != nil {
+		return fmt.Errorf("failed to connect to Everything: %w", err)
+	}
+	defer client.Close()
+
+	// Use search options that include hash properties
+	opts := everything3.SearchOptionsWithHashes()
+	opts.Text = "*.exe"
+	opts.Count = 5
+
+	results, err := client.Search(opts)
+	if err != nil {
+		return fmt.Errorf("search failed: %w", err)
+	}
+
+	fmt.Printf("Found %d results (showing %d with hashes)\n\n",
+		results.TotalCount, len(results.Results))
+
+	for i, result := range results.Results {
+		fmt.Printf("%d. %s\n", i+1, result.Name)
+		fmt.Printf("   Path: %s\n", result.Path)
+		fmt.Printf("   Size: %s\n", everything3.FormatSize(result.Size))
+
+		// Show hash values if available
+		if result.CRC32.Valid {
+			fmt.Printf("   CRC32: %08X\n", result.CRC32.CRC32())
+		}
+		if result.MD5.Valid {
+			fmt.Printf("   MD5: %s\n", result.MD5.String())
+		}
+		if result.SHA256.Valid {
+			fmt.Printf("   SHA256: %s\n", result.SHA256.String())
+		}
+		fmt.Println()
+	}
+
+	return nil
+}
+
 // advancedSearchExample demonstrates advanced search options
 func advancedSearchExample() error {
 	fmt.Println("=== Advanced Search Example ===")
@@ -305,11 +437,11 @@ func advancedSearchExample() error {
 		results.TotalCount, len(results.Results))
 
 	for i, result := range results.Results {
-		typeStr := "📄"
+		typeStr := "File"
 		if result.IsFolder {
-			typeStr = "📁"
+			typeStr = "Folder"
 		}
-		fmt.Printf("%s %d. %s\n", typeStr, i+1, result.FullPath)
+		fmt.Printf("[%s] %d. %s\n", typeStr, i+1, result.FullPath)
 		fmt.Printf("     Modified: %s\n", result.DateModified.Format("2006-01-02 15:04:05"))
 	}
 

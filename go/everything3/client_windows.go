@@ -17,6 +17,19 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+var (
+	kernel32         = syscall.NewLazyDLL("kernel32.dll")
+	procWaitNamedPipe = kernel32.NewProc("WaitNamedPipeW")
+)
+
+func waitNamedPipe(name *uint16, timeout uint32) error {
+	r1, _, err := procWaitNamedPipe.Call(uintptr(unsafe.Pointer(name)), uintptr(timeout))
+	if r1 == 0 {
+		return err
+	}
+	return nil
+}
+
 // Client represents a connection to the Everything IPC server
 type Client struct {
 	pipe     windows.Handle
@@ -69,7 +82,7 @@ func Connect(instanceName string) (*Client, error) {
 		}
 		if errors.Is(err, windows.ERROR_PIPE_BUSY) {
 			// Wait for the pipe to become available
-			windows.WaitNamedPipe(pipeNamePtr, 1000)
+			waitNamedPipe(pipeNamePtr, 1000)
 			continue
 		}
 		return nil, fmt.Errorf("failed to connect to Everything IPC: %w", err)

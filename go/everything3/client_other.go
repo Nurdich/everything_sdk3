@@ -25,6 +25,36 @@ func ConnectDefault() (*Client, error) {
 	return nil, ErrNotSupported
 }
 
+// FindEverythingPath searches for the Everything.exe installation path.
+// This function is not supported on non-Windows platforms.
+func FindEverythingPath() (string, error) {
+	return "", ErrNotSupported
+}
+
+// IsEverythingRunning checks if Everything is currently running.
+// This function is not supported on non-Windows platforms.
+func IsEverythingRunning(instanceName string) bool {
+	return false
+}
+
+// StartEverything starts the Everything application if it's not already running.
+// This function is not supported on non-Windows platforms.
+func StartEverything() (string, error) {
+	return "", ErrNotSupported
+}
+
+// ConnectOrStart connects to the Everything IPC server, starting Everything if it's not running.
+// This function is not supported on non-Windows platforms.
+func ConnectOrStart(instanceName string) (*Client, error) {
+	return nil, ErrNotSupported
+}
+
+// ConnectOrStartDefault connects to Everything, starting it if necessary.
+// This function is not supported on non-Windows platforms.
+func ConnectOrStartDefault() (*Client, error) {
+	return nil, ErrNotSupported
+}
+
 // Close closes the connection to the Everything server
 func (c *Client) Close() error {
 	return ErrNotSupported

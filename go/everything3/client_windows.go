@@ -182,6 +182,204 @@ func ConnectDefault() (*Client, error) {
 	return Connect("1.5a")
 }
 
+// FindEverythingPath searches for the Everything.exe installation path.
+// It checks the Windows registry first, then common installation directories.
+func FindEverythingPath() (string, error) {
+	// Try to find from registry (HKLM and HKCU)
+	registryPaths := []struct {
+		root windows.Handle
+		path string
+	}{
+		{windows.HKEY_LOCAL_MACHINE, `SOFTWARE\voidtools\Everything`},
+		{windows.HKEY_CURRENT_USER, `SOFTWARE\voidtools\Everything`},
+		{windows.HKEY_LOCAL_MACHINE, `SOFTWARE\WOW6432Node\voidtools\Everything`},
+	}
+
+	for _, rp := range registryPaths {
+		key, err := windows.OpenKey(rp.root, rp.path, windows.KEY_READ)
+		if err != nil {
+			continue
+		}
+		defer windows.CloseHandle(windows.Handle(key))
+
+		// Try "InstallPath" or "Install_Dir" value
+		for _, valueName := range []string{"InstallPath", "Install_Dir", ""} {
+			val, _, err := key.GetStringValue(valueName)
+			if err == nil && val != "" {
+				exePath := filepath.Join(val, "Everything.exe")
+				if fileExists(exePath) {
+					return exePath, nil
+				}
+				// Maybe the value is the exe path itself
+				if fileExists(val) {
+					return val, nil
+				}
+			}
+		}
+	}
+
+	// Try common installation paths
+	commonPaths := []string{
+		`C:\Program Files\Everything\Everything.exe`,
+		`C:\Program Files (x86)\Everything\Everything.exe`,
+		`C:\Program Files\Everything 1.5a\Everything.exe`,
+		`C:\Program Files (x86)\Everything 1.5a\Everything.exe`,
+	}
+
+	// Also check user's local app data
+	if appData := getenv("LOCALAPPDATA"); appData != "" {
+		commonPaths = append(commonPaths,
+			filepath.Join(appData, "Everything", "Everything.exe"),
+			filepath.Join(appData, "Programs", "Everything", "Everything.exe"),
+		)
+	}
+
+	for _, path := range commonPaths {
+		if fileExists(path) {
+			return path, nil
+		}
+	}
+
+	return "", errors.New("Everything.exe not found")
+}
+
+// IsEverythingRunning checks if Everything is currently running by trying to connect to its IPC pipe.
+func IsEverythingRunning(instanceName string) bool {
+	pipeName := `\\.\PIPE\Everything IPC`
+	if instanceName != "" {
+		pipeName = fmt.Sprintf(`\\.\PIPE\Everything IPC (%s)`, instanceName)
+	}
+
+	pipeNamePtr, err := syscall.UTF16PtrFromString(pipeName)
+	if err != nil {
+		return false
+	}
+
+	// Try to open the pipe briefly
+	pipe, err := windows.CreateFile(
+		pipeNamePtr,
+		windows.GENERIC_READ|windows.GENERIC_WRITE,
+		0,
+		nil,
+		windows.OPEN_EXISTING,
+		0,
+		0,
+	)
+	if err != nil {
+		return false
+	}
+	windows.CloseHandle(pipe)
+	return true
+}
+
+// StartEverything starts the Everything application if it's not already running.
+// Returns the path to Everything.exe that was started, or an error if it couldn't be started.
+func StartEverything() (string, error) {
+	// Check if already running
+	if IsEverythingRunning("") || IsEverythingRunning("1.5a") {
+		return "", nil // Already running
+	}
+
+	// Find Everything.exe
+	exePath, err := FindEverythingPath()
+	if err != nil {
+		return "", fmt.Errorf("cannot find Everything.exe: %w", err)
+	}
+
+	// Start Everything with -startup flag (starts minimized/background)
+	cmd := fmt.Sprintf(`"%s" -startup`, exePath)
+	cmdPtr, err := syscall.UTF16PtrFromString(cmd)
+	if err != nil {
+		return "", err
+	}
+
+	var si windows.StartupInfo
+	var pi windows.ProcessInformation
+	si.Cb = uint32(unsafe.Sizeof(si))
+
+	err = windows.CreateProcess(
+		nil,
+		cmdPtr,
+		nil,
+		nil,
+		false,
+		windows.CREATE_NO_WINDOW,
+		nil,
+		nil,
+		&si,
+		&pi,
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to start Everything: %w", err)
+	}
+
+	// Close process handles (we don't need to wait for it)
+	windows.CloseHandle(pi.Process)
+	windows.CloseHandle(pi.Thread)
+
+	return exePath, nil
+}
+
+// ConnectOrStart connects to the Everything IPC server, starting Everything if it's not running.
+// This function will:
+// 1. Try to connect to an existing Everything instance
+// 2. If no instance is running, find and start Everything.exe
+// 3. Wait for Everything to become available and connect
+func ConnectOrStart(instanceName string) (*Client, error) {
+	// First, try to connect directly
+	client, err := Connect(instanceName)
+	if err == nil {
+		return client, nil
+	}
+
+	// Connection failed, try to start Everything
+	exePath, startErr := StartEverything()
+	if startErr != nil {
+		return nil, fmt.Errorf("cannot connect to Everything and failed to start it: connect error: %v, start error: %w", err, startErr)
+	}
+
+	// Wait for Everything to start and become available
+	var lastErr error
+	for i := 0; i < 50; i++ { // Wait up to 5 seconds
+		time.Sleep(100 * time.Millisecond)
+
+		client, lastErr = Connect(instanceName)
+		if lastErr == nil {
+			return client, nil
+		}
+	}
+
+	if exePath != "" {
+		return nil, fmt.Errorf("started Everything (%s) but failed to connect: %w", exePath, lastErr)
+	}
+	return nil, fmt.Errorf("failed to connect to Everything: %w", lastErr)
+}
+
+// ConnectOrStartDefault connects to Everything, starting it if necessary.
+// It tries both the default instance and the "1.5a" instance.
+func ConnectOrStartDefault() (*Client, error) {
+	// Try default instance first
+	client, err := ConnectOrStart("")
+	if err == nil {
+		return client, nil
+	}
+
+	// Try 1.5a instance
+	return ConnectOrStart("1.5a")
+}
+
+// Helper function to check if a file exists
+func fileExists(path string) bool {
+	_, err := syscall.Stat(path)
+	return err == nil
+}
+
+// Helper function to get environment variable
+func getenv(key string) string {
+	val, _ := syscall.Getenv(key)
+	return val
+}
+
 // Close closes the connection to the Everything server
 func (c *Client) Close() error {
 	c.mu.Lock()

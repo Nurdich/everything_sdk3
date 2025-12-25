@@ -4,7 +4,7 @@
 //
 // Requirements:
 //   - Windows operating system
-//   - Everything 1.5 must be running with IPC enabled
+//   - Everything 1.5 installed (will be started automatically if not running)
 //
 // Usage:
 //
@@ -77,9 +77,8 @@ func simpleExample(query string) error {
 	fmt.Println("=== Simple Search Example ===")
 	fmt.Printf("Searching for: %s\n\n", query)
 
-	// Connect to Everything
-	// Try default instance first, then "1.5a"
-	client, err := everything3.ConnectDefault()
+	// Connect to Everything (auto-starts Everything if not running)
+	client, err := everything3.ConnectOrStartDefault()
 	if err != nil {
 		return fmt.Errorf("failed to connect to Everything: %w", err)
 	}

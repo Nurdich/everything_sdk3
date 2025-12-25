@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"sync"
 	"syscall"
@@ -15,6 +16,7 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 )
 
 var (
@@ -187,20 +189,19 @@ func ConnectDefault() (*Client, error) {
 func FindEverythingPath() (string, error) {
 	// Try to find from registry (HKLM and HKCU)
 	registryPaths := []struct {
-		root windows.Handle
+		root registry.Key
 		path string
 	}{
-		{windows.HKEY_LOCAL_MACHINE, `SOFTWARE\voidtools\Everything`},
-		{windows.HKEY_CURRENT_USER, `SOFTWARE\voidtools\Everything`},
-		{windows.HKEY_LOCAL_MACHINE, `SOFTWARE\WOW6432Node\voidtools\Everything`},
+		{registry.LOCAL_MACHINE, `SOFTWARE\voidtools\Everything`},
+		{registry.CURRENT_USER, `SOFTWARE\voidtools\Everything`},
+		{registry.LOCAL_MACHINE, `SOFTWARE\WOW6432Node\voidtools\Everything`},
 	}
 
 	for _, rp := range registryPaths {
-		key, err := windows.OpenKey(rp.root, rp.path, windows.KEY_READ)
+		key, err := registry.OpenKey(rp.root, rp.path, registry.QUERY_VALUE)
 		if err != nil {
 			continue
 		}
-		defer windows.CloseHandle(windows.Handle(key))
 
 		// Try "InstallPath" or "Install_Dir" value
 		for _, valueName := range []string{"InstallPath", "Install_Dir", ""} {
@@ -208,14 +209,17 @@ func FindEverythingPath() (string, error) {
 			if err == nil && val != "" {
 				exePath := filepath.Join(val, "Everything.exe")
 				if fileExists(exePath) {
+					key.Close()
 					return exePath, nil
 				}
 				// Maybe the value is the exe path itself
 				if fileExists(val) {
+					key.Close()
 					return val, nil
 				}
 			}
 		}
+		key.Close()
 	}
 
 	// Try common installation paths
@@ -370,14 +374,13 @@ func ConnectOrStartDefault() (*Client, error) {
 
 // Helper function to check if a file exists
 func fileExists(path string) bool {
-	_, err := syscall.Stat(path)
+	_, err := os.Stat(path)
 	return err == nil
 }
 
 // Helper function to get environment variable
 func getenv(key string) string {
-	val, _ := syscall.Getenv(key)
-	return val
+	return os.Getenv(key)
 }
 
 // Close closes the connection to the Everything server

@@ -92,13 +92,6 @@ func Connect(instanceName string) (*Client, error) {
 		return nil, fmt.Errorf("failed to connect to Everything IPC after retries: %w", err)
 	}
 
-	// Set pipe to message mode
-	mode := uint32(windows.PIPE_READMODE_MESSAGE)
-	if err := windows.SetNamedPipeHandleState(pipe, &mode, nil, nil); err != nil {
-		windows.CloseHandle(pipe)
-		return nil, fmt.Errorf("failed to set pipe mode: %w", err)
-	}
-
 	return &Client{
 		pipe:     pipe,
 		instance: instanceName,

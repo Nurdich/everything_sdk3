@@ -185,8 +185,36 @@ func ConnectDefault() (*Client, error) {
 }
 
 // FindEverythingPath searches for the Everything.exe installation path.
-// It checks the Windows registry first, then common installation directories.
+// It checks local directories first, then the Windows registry, then common installation directories.
 func FindEverythingPath() (string, error) {
+	// First, check local directories (current working directory and executable directory)
+	localPaths := []string{}
+
+	// Current working directory
+	if cwd, err := os.Getwd(); err == nil {
+		localPaths = append(localPaths,
+			filepath.Join(cwd, "Everything.exe"),
+			filepath.Join(cwd, "Everything", "Everything.exe"),
+			filepath.Join(cwd, "Everything64.exe"),
+		)
+	}
+
+	// Directory where the calling executable is located
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		localPaths = append(localPaths,
+			filepath.Join(exeDir, "Everything.exe"),
+			filepath.Join(exeDir, "Everything", "Everything.exe"),
+			filepath.Join(exeDir, "Everything64.exe"),
+		)
+	}
+
+	for _, path := range localPaths {
+		if fileExists(path) {
+			return path, nil
+		}
+	}
+
 	// Try to find from registry (HKLM and HKCU)
 	registryPaths := []struct {
 		root registry.Key

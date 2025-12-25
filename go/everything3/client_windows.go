@@ -526,29 +526,30 @@ func (c *Client) buildSearchRequest(opts *SearchOptions) []byte {
 	return data[:offset]
 }
 
-// Property value types from Everything SDK
+// Property value types from Everything SDK (from Everything3.h)
 const (
-	propValueTypePString               = 1
-	propValueTypePStringMultistring    = 2
-	propValueTypePStringStringRef      = 3
-	propValueTypePStringFolderRef      = 4
-	propValueTypePStringFileOrFolderRef = 5
-	propValueTypeByte                  = 6
-	propValueTypeByteGetText           = 7
-	propValueTypeWord                  = 8
-	propValueTypeWordGetText           = 9
-	propValueTypeDWord                 = 10
-	propValueTypeDWordFixedQ1K         = 11
-	propValueTypeDWordGetText          = 12
-	propValueTypeUint64                = 13
-	propValueTypeUint128               = 14
-	propValueTypeDimensions            = 15
-	propValueTypeSizeT                 = 16
-	propValueTypeInt32FixedQ1K         = 17
-	propValueTypeInt32FixedQ1M         = 18
-	propValueTypeBlob8                 = 19
-	propValueTypeBlob16                = 20
-	propValueTypePropVariant           = 21
+	propValueTypeNull                   = 0
+	propValueTypeByte                   = 1
+	propValueTypeWord                   = 2
+	propValueTypeDWord                  = 3
+	propValueTypeDWordFixedQ1K          = 4
+	propValueTypeUint64                 = 5
+	propValueTypeUint128                = 6
+	propValueTypeDimensions             = 7
+	propValueTypePString                = 8
+	propValueTypePStringMultistring     = 9
+	propValueTypePStringStringRef       = 10
+	propValueTypeSizeT                  = 11
+	propValueTypeInt32FixedQ1K          = 12
+	propValueTypeInt32FixedQ1M          = 13
+	propValueTypePStringFolderRef       = 14
+	propValueTypePStringFileOrFolderRef = 15
+	propValueTypeBlob8                  = 16
+	propValueTypeDWordGetText           = 17
+	propValueTypeWordGetText            = 18
+	propValueTypeBlob16                 = 19
+	propValueTypeByteGetText            = 20
+	propValueTypePropVariant            = 21
 )
 
 // propertyInfo holds information about a requested property
